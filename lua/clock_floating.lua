@@ -1,5 +1,6 @@
 -- lua/clock_floating.lua
 -- ClockFloating: per-cell Gruvbox coloring, no shadow, robust float handling.
+-- Fixed: use byte indices for nvim_buf_add_highlight to avoid mixed colors.
 
 local M = {}
 
@@ -104,7 +105,6 @@ local DIGITS = {
 	},
 }
 
--- Gruvbox Dark-ish palette (hex)
 local GRUVBOX = {
 	red = "#fb4934",
 	green = "#b8bb26",
@@ -132,7 +132,6 @@ local DIGIT_COLOR = {
 	[":"] = GRUVBOX.blue,
 }
 
--- module state
 local state = {
 	cfg = vim.tbl_deep_extend("force", {}, DEFAULTS),
 	timer = nil,
@@ -148,19 +147,15 @@ local function safe_call(fn)
 	if type(fn) ~= "function" then
 		return
 	end
-	local ok, _ = pcall(fn)
-	return ok
+	pcall(fn)
 end
 
--- create per-digit highlight groups (idempotent)
 local function create_digit_highlights()
 	for ch, hex in pairs(DIGIT_COLOR) do
 		local name = (ch == ":" and "ClockFloatingDigitColon") or ("ClockFloatingDigit" .. ch)
 		pcall(vim.api.nvim_set_hl, 0, name, { fg = hex, bg = "NONE" })
 	end
-	-- also create a fallback main group (not used for per-cell but safe)
 	pcall(vim.api.nvim_set_hl, 0, "ClockFloatingMain", { fg = state.cfg.fg, bg = "NONE" })
-	-- create a group for space fallback if needed
 	pcall(vim.api.nvim_set_hl, 0, "ClockFloatingDigitSpace", { fg = state.cfg.fg, bg = "NONE" })
 end
 
@@ -189,7 +184,6 @@ local function scale_block(block, scale)
 	return out
 end
 
--- build ASCII lines for current time string "HH:MM:SS"
 local function build_clock_lines(time_str, cfg)
 	local chars = {}
 	for ch in time_str:gmatch(".") do
@@ -235,7 +229,6 @@ local function make_buf()
 	return buf
 end
 
--- safe helper to produce a highlight group name for a digit char
 local function safe_hl_name(dchar)
 	if dchar == ":" then
 		return "ClockFloatingDigitColon"
@@ -253,8 +246,7 @@ local function safe_hl_name(dchar)
 	return "ClockFloatingDigit" .. s
 end
 
--- apply per-cell highlights only for '█' characters (robust, no utf8.offset)
--- Replace your apply_digit_highlights with this version
+-- ===== FIXED: use byte indices (s,e from string.find) for highlight start/end =====
 local function apply_digit_highlights(buf, lines, cfg, time_str)
 	if not buf or not vim.api.nvim_buf_is_valid(buf) then
 		return
@@ -267,40 +259,40 @@ local function apply_digit_highlights(buf, lines, cfg, time_str)
 	local sep = 1
 	local pad = cfg.padding
 
-	-- Use time_str directly (exact mapping) rather than sampling the first line.
-	-- time_str should be like "HH:MM:SS" and its length equals number of blocks.
+	-- use time_str directly -> exact per-block digit mapping
 	local timechars = {}
 	for i = 1, #time_str do
 		timechars[i] = time_str:sub(i, i)
 	end
 
-	-- iterate rows and locate each '█' and highlight that single cell
 	for line_idx = 1, #lines do
 		local row = lines[line_idx]
 		local start = 1
 		while true do
-			local s, e = row:find("█", start, true)
+			local s, e = row:find("█", start, true) -- s,e are byte indices (1-based)
 			if not s then
 				break
 			end
 			local prefix = row:sub(1, s - 1)
-			local col = vim.fn.strdisplaywidth(prefix)
-			local rel = col - pad
+			local display_col = vim.fn.strdisplaywidth(prefix)
+			local rel = display_col - pad
 			if rel >= 0 then
 				local block_index = math.floor(rel / (block_width + sep)) + 1
 				local within = rel % (block_width + sep)
 				if block_index >= 1 and block_index <= #timechars and within < block_width then
 					local digit_char = timechars[block_index] or " "
 					local hl = safe_hl_name(digit_char)
-					pcall(vim.api.nvim_buf_add_highlight, buf, ns, hl, line_idx - 1, col, col + 1)
+					-- nvim_buf_add_highlight expects start/end as character positions (byte indices)
+					-- use zero-based start = s-1, exclusive end = e
+					pcall(vim.api.nvim_buf_add_highlight, buf, ns, hl, line_idx - 1, s - 1, e)
 				end
 			end
 			start = e + 1
 		end
 	end
 end
+-- ===== end fixed highlight application =====
 
--- open float (do not pass winblend in open opts)
 local function open_floating(lines, opts)
 	local buf = make_buf()
 	if not buf then
@@ -344,7 +336,7 @@ local function open_floating(lines, opts)
 	open_opts.noautocmd = open_opts.noautocmd == nil and true or open_opts.noautocmd
 
 	local win = nil
-	local ok, err = pcall(function()
+	local ok, _ = pcall(function()
 		win = vim.api.nvim_open_win(buf, false, open_opts)
 	end)
 	if not ok then
@@ -439,12 +431,9 @@ local function render_once()
 
 	create_digit_highlights()
 
-	-- open or update main window
 	if not (state.win and vim.api.nvim_win_is_valid(state.win)) then
 		local buf_m, win_m = open_floating(lines, main_cfg)
 		if win_m and vim.api.nvim_win_is_valid(win_m) then
-			-- do NOT set winhl; that forces a single window color in some setups
-			-- apply highlights immediately and re-assert after a short delay
 			pcall(apply_digit_highlights, buf_m, lines, cfg, timestr)
 			vim.defer_fn(function()
 				if buf_m and vim.api.nvim_buf_is_valid(buf_m) then
@@ -513,7 +502,7 @@ local function start_timer()
 			render_once()
 		end
 	end)
-	local ok, err = pcall(function()
+	local ok, _ = pcall(function()
 		timer:start(0, state.cfg.interval, wrapped)
 	end)
 	if not ok then
@@ -548,7 +537,6 @@ local function stop_and_cleanup()
 
 	state.win = nil
 	state.buf = nil
-	-- clear namespace in all buffers
 	pcall(function()
 		for _, b in ipairs(vim.api.nvim_list_bufs()) do
 			if vim.api.nvim_buf_is_valid(b) then
@@ -608,7 +596,6 @@ function M.setup(user_cfg)
 		state.cfg = vim.tbl_deep_extend("force", {}, DEFAULTS, user_cfg)
 	end
 	create_digit_highlights()
-
 	if vim.api.nvim_create_user_command then
 		pcall(function()
 			vim.api.nvim_create_user_command(state.cfg.cmd, function()
@@ -616,7 +603,6 @@ function M.setup(user_cfg)
 			end, { desc = "Toggle ClockFloating" })
 		end)
 	end
-
 	if state.cfg.map ~= false then
 		local existing = vim.fn.maparg("<leader>ck", "n")
 		if existing == "" then
