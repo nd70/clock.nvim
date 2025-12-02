@@ -151,22 +151,14 @@ local function safe_call(fn)
 		return
 	end
 	local ok, err = pcall(fn)
-	if not ok then
-		-- keep silent by default; uncomment to debug:
-		-- vim.schedule(function() vim.notify("clock_floating: "..tostring(err), vim.log.levels.DEBUG) end)
-	end
 end
 
 local function create_digit_highlights()
 	for ch, hex in pairs(DIGIT_COLOR) do
 		local name = (ch == ":" and "ClockFloatingDigitColon") or ("ClockFloatingDigit" .. ch)
-		safe_call(function()
-			vim.cmd(string.format("highlight default %s guifg=%s guibg=NONE", name, hex))
-		end)
+		pcall(vim.api.nvim_set_hl, 0, name, { fg = hex, bg = "NONE" })
 	end
-	safe_call(function()
-		vim.cmd(string.format("highlight default ClockFloatingMain guifg=%s guibg=NONE", state.cfg.fg))
-	end)
+	pcall(vim.api.nvim_set_hl, 0, "ClockFloatingMain", { fg = state.cfg.fg, bg = "NONE" })
 end
 
 local function hscale_row(row, scale)
