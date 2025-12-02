@@ -105,31 +105,31 @@ local DIGITS = {
 	},
 }
 
-local GRUVBOX = {
-	red = "#fb4934",
-	green = "#b8bb26",
-	yellow = "#fabd2f",
-	blue = "#83a598",
-	purple = "#d3869b",
-	aqua = "#8ec07c",
-	orange = "#fe8019",
-	gray = "#928374",
-	light = "#fbf1c7",
-	darkred = "#cc241d",
+local KANAGAWA = {
+	red = "#D14A3A",
+	orange = "#DCA561",
+	yellow = "#E6C384",
+	green = "#7FB4CA",
+	blue = "#7FB4D1",
+	purple = "#CBA6D6",
+	teal = "#6FB3B8",
+	gray = "#81707a",
+	light = "#E6D7B6",
+	dark = "#2a2a2e",
 }
 
 local DIGIT_COLOR = {
-	["0"] = GRUVBOX.gray,
-	["1"] = GRUVBOX.red,
-	["2"] = GRUVBOX.green,
-	["3"] = GRUVBOX.yellow,
-	["4"] = GRUVBOX.blue,
-	["5"] = GRUVBOX.purple,
-	["6"] = GRUVBOX.aqua,
-	["7"] = GRUVBOX.orange,
-	["8"] = GRUVBOX.light,
-	["9"] = GRUVBOX.darkred,
-	[":"] = GRUVBOX.blue,
+	["0"] = KANAGAWA.gray,
+	["1"] = KANAGAWA.red,
+	["2"] = KANAGAWA.green,
+	["3"] = KANAGAWA.yellow,
+	["4"] = KANAGAWA.blue,
+	["5"] = KANAGAWA.purple,
+	["6"] = KANAGAWA.teal,
+	["7"] = KANAGAWA.orange,
+	["8"] = KANAGAWA.light,
+	["9"] = KANAGAWA.dark,
+	[":"] = KANAGAWA.blue,
 }
 
 local state = {
@@ -142,13 +142,6 @@ local state = {
 	augroup = nil,
 	ns = vim.api.nvim_create_namespace("clock_floating_ns"),
 }
-
-local function safe_call(fn)
-	if type(fn) ~= "function" then
-		return
-	end
-	pcall(fn)
-end
 
 local function create_digit_highlights()
 	for ch, hex in pairs(DIGIT_COLOR) do
