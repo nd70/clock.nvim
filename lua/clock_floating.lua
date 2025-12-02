@@ -158,7 +158,7 @@ local function create_digit_highlights()
 		local name = (ch == ":" and "ClockFloatingDigitColon") or ("ClockFloatingDigit" .. ch)
 		pcall(vim.api.nvim_set_hl, 0, name, { fg = hex, bg = hex })
 	end
-	pcall(vim.api.nvim_set_hl, 0, "ClockFloatingMain", { fg = state.cfg.fg, bg = "NONE" })
+	pcall(vim.api.nvim_set_hl, 0, "ClockFloatingMain", { fg = state.cfg.fg, bg = hex })
 end
 
 local function hscale_row(row, scale)
