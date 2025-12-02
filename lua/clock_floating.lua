@@ -1,36 +1,115 @@
+-- lua/clock_floating.lua
+-- ClockFloating with retro "█" only digit map for crisp terminal rendering.
+-- All floating-window API usage corrected: winblend set after open (not passed to nvim_open_win).
+
 local M = {}
 
 local DEFAULTS = {
-	fg = "#a8ff60",
-	shadow_fg = "#2b5d1a",
-	winblend = 40,
-	shadow_winblend = 60,
+	fg = "#88ff66", -- bright green
+	shadow_fg = "#003300", -- dark green
+	winblend = 0, -- main fully opaque for crispness
+	shadow_winblend = 15, -- light shadow blend
 	border = "none",
-	padding = 2,
+	padding = 1,
 	scale = 1,
 	use_shadow = true,
 	interval = 1000,
-	min_cols = 30,
-	min_rows = 8,
+	min_cols = 20,
+	min_rows = 6,
 	map = true,
 	cmd = "ClockFloatingToggle",
 }
 
+-- Retro, blocky digits using only █ and spaces (5 rows)
+-- Width chosen to be 7 characters per digit to match earlier layout
 local DIGITS = {
-	["0"] = { " █████ ", "█     █", "█     █", "█     █", " █████ " },
-	["1"] = { "   █   ", "  ██   ", "   █   ", "   █   ", "  ███  " },
-	["2"] = { " █████ ", "█     █", "    ██ ", "  ██   ", "███████" },
-	["3"] = { " █████ ", "█     █", "   ███ ", "█     █", " █████ " },
-	["4"] = { "█   ██ ", "█   ██ ", "███████", "    ██ ", "    ██ " },
-	["5"] = { "███████", "█      ", "██████ ", "      █", "██████ " },
-	["6"] = { " █████ ", "█      ", "██████ ", "█     █", " █████ " },
-	["7"] = { "███████", "█    ██", "    ██ ", "   ██  ", "  ██   " },
-	["8"] = { " █████ ", "█     █", " █████ ", "█     █", " █████ " },
-	["9"] = { " █████ ", "█     █", " ██████", "      █", " █████ " },
-	[":"] = { "       ", "   ██  ", "       ", "   ██  ", "       " },
-	[" "] = { "       ", "       ", "       ", "       ", "       " },
+	["0"] = {
+		" █████ ",
+		"█     █",
+		"█     █",
+		"█     █",
+		" █████ ",
+	},
+	["1"] = {
+		"   ██  ",
+		" ████  ",
+		"   ██  ",
+		"   ██  ",
+		" █████ ",
+	},
+	["2"] = {
+		" █████ ",
+		"█     █",
+		"    ██ ",
+		"  ███  ",
+		"███████",
+	},
+	["3"] = {
+		" █████ ",
+		"█     █",
+		"  ████ ",
+		"█     █",
+		" █████ ",
+	},
+	["4"] = {
+		"█   ██ ",
+		"█   ██ ",
+		"█   ██ ",
+		"███████",
+		"    ██ ",
+	},
+	["5"] = {
+		"███████",
+		"█      ",
+		"██████ ",
+		"      █",
+		"██████ ",
+	},
+	["6"] = {
+		" █████ ",
+		"█      ",
+		"██████ ",
+		"█     █",
+		" █████ ",
+	},
+	["7"] = {
+		"███████",
+		"█    ██",
+		"   ██  ",
+		"  ██   ",
+		"  ██   ",
+	},
+	["8"] = {
+		" █████ ",
+		"█     █",
+		" █████ ",
+		"█     █",
+		" █████ ",
+	},
+	["9"] = {
+		" █████ ",
+		"█     █",
+		" ██████",
+		"      █",
+		" █████ ",
+	},
+	[":"] = {
+		"       ",
+		"   ██  ",
+		"       ",
+		"   ██  ",
+		"       ",
+	},
+	[" "] = {
+		"       ",
+		"       ",
+		"       ",
+		"       ",
+		"       ",
+	},
 }
 
+-- Internal state (same safe approach as previous corrected version)
 local state = {
 	cfg = vim.tbl_deep_extend("force", {}, DEFAULTS),
 	timer = nil,
@@ -46,6 +125,10 @@ local function safe_call(fn)
 		return
 	end
 	local ok, err = pcall(fn)
+	if not ok then
+		-- silent by default; for debugging uncomment:
+		-- vim.schedule(function() vim.notify("clock_floating: "..tostring(err), vim.log.levels.DEBUG) end)
+	end
 end
 
 local function create_highlights(cfg)
@@ -125,8 +208,7 @@ local function make_buf()
 	return buf
 end
 
--- open_floating: ensure we REMOVE keys unsupported by nvim_open_win (like 'winblend')
--- set any window options (winblend, winhl) AFTER the window is created.
+-- open_floating: do not pass unsupported keys to nvim_open_win (winblend must be set after open)
 local function open_floating(lines, opts)
 	local buf = make_buf()
 	if not buf then
@@ -139,7 +221,6 @@ local function open_floating(lines, opts)
 		vim.api.nvim_buf_set_option(buf, "modifiable", false)
 	end)
 
-	-- clamp width/height/col/row to editor size
 	local ui_cols = vim.o.columns
 	local ui_rows = vim.o.lines - vim.o.cmdheight
 	if opts.width > ui_cols then
@@ -161,28 +242,23 @@ local function open_floating(lines, opts)
 		opts.row = math.max(0, ui_rows - opts.height)
 	end
 
-	-- prepare open_opts that we will pass to nvim_open_win (must NOT include winblend)
 	local open_opts = vim.tbl_deep_extend("force", {}, opts)
 	local winblend_value = nil
 	if open_opts.winblend ~= nil then
 		winblend_value = open_opts.winblend
 		open_opts.winblend = nil
 	end
-	-- ensure focusable/noautocmd keys are present if desired (these are accepted)
 	open_opts.focusable = open_opts.focusable == nil and false or open_opts.focusable
 	open_opts.noautocmd = open_opts.noautocmd == nil and true or open_opts.noautocmd
 
-	-- open the window with safe pcall
 	local win = nil
 	local ok, err = pcall(function()
 		win = vim.api.nvim_open_win(buf, false, open_opts)
 	end)
 	if not ok then
-		-- return error by returning nil,nil (caller may pcall)
 		return nil, nil
 	end
 
-	-- now set window options that must be applied after open
 	if win and vim.api.nvim_win_is_valid(win) then
 		if winblend_value ~= nil then
 			safe_call(function()
@@ -235,12 +311,9 @@ local function make_center_config(lines, cfg, offset_row, offset_col)
 		height = height,
 		style = "minimal",
 		border = cfg.border,
-		-- don't include winblend here if we intend to pass opts directly to nvim_open_win; leave it
-		-- in the table so open_floating can extract it and then remove before calling open.
 		winblend = cfg.winblend,
 	}
 
-	-- add anchor/zindex on newer nvim only
 	local v = vim.version()
 	if v and v.major == 0 and v.minor >= 9 then
 		cfg_tbl.anchor = "NW"
@@ -274,7 +347,6 @@ local function render_once()
 	local lines = build_clock_lines(timestr, cfg)
 
 	local main_cfg = make_center_config(lines, cfg, 0, 0)
-	-- keep winblend value inside cfg table; open_floating will remove before open and apply after
 	main_cfg.winblend = cfg.winblend
 
 	local shadow_cfg = nil
