@@ -156,7 +156,7 @@ end
 local function create_digit_highlights()
 	for ch, hex in pairs(DIGIT_COLOR) do
 		local name = (ch == ":" and "ClockFloatingDigitColon") or ("ClockFloatingDigit" .. ch)
-		pcall(vim.api.nvim_set_hl, 0, name, { fg = hex, bg = "NONE" })
+		pcall(vim.api.nvim_set_hl, 0, name, { fg = hex, bg = hex })
 	end
 	pcall(vim.api.nvim_set_hl, 0, "ClockFloatingMain", { fg = state.cfg.fg, bg = "NONE" })
 end
