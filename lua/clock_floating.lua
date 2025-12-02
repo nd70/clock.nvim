@@ -12,7 +12,6 @@ local DEFAULTS = {
 	border = "none",
 	padding = 1,
 	scale = 1,
-	use_shadow = true,
 	interval = 1000,
 	min_cols = 20,
 	min_rows = 6,
@@ -349,50 +348,7 @@ local function render_once()
 	local main_cfg = make_center_config(lines, cfg, 0, 0)
 	main_cfg.winblend = cfg.winblend
 
-	local shadow_cfg = nil
-	if cfg.use_shadow then
-		shadow_cfg = vim.deepcopy(main_cfg)
-		shadow_cfg.row = math.min(shadow_cfg.row + 1, vim.o.lines - vim.o.cmdheight - 1)
-		shadow_cfg.col = math.min(shadow_cfg.col + 2, math.max(0, vim.o.columns - 1))
-		shadow_cfg.winblend = cfg.shadow_winblend
-	end
-
 	create_highlights(cfg)
-
-	if cfg.use_shadow then
-		if not (state.wins.shadow and vim.api.nvim_win_is_valid(state.wins.shadow)) then
-			local buf_s, win_s = open_floating(lines, shadow_cfg)
-			if win_s and vim.api.nvim_win_is_valid(win_s) then
-				safe_call(function()
-					vim.api.nvim_win_set_option(win_s, "winhl", "Normal:ClockFloatingShadow")
-				end)
-			end
-			state.bufs.shadow, state.wins.shadow = buf_s, win_s
-		else
-			if state.bufs.shadow and vim.api.nvim_buf_is_valid(state.bufs.shadow) then
-				safe_call(function()
-					vim.api.nvim_buf_set_option(state.bufs.shadow, "modifiable", true)
-					vim.api.nvim_buf_set_lines(state.bufs.shadow, 0, -1, false, lines)
-					vim.api.nvim_buf_set_option(state.bufs.shadow, "modifiable", false)
-				end)
-			end
-			safe_call(function()
-				local ok = pcall(function()
-					vim.api.nvim_win_set_config(state.wins.shadow, shadow_cfg)
-				end)
-				if not ok then
-					pcall(vim.api.nvim_win_close, state.wins.shadow, true)
-					local buf_s, win_s = open_floating(lines, shadow_cfg)
-					if win_s and vim.api.nvim_win_is_valid(win_s) then
-						safe_call(function()
-							vim.api.nvim_win_set_option(win_s, "winhl", "Normal:ClockFloatingShadow")
-						end)
-					end
-					state.bufs.shadow, state.wins.shadow = buf_s, win_s
-				end
-			end)
-		end
-	end
 
 	if not (state.wins.main and vim.api.nvim_win_is_valid(state.wins.main)) then
 		local buf_m, win_m = open_floating(lines, main_cfg)
