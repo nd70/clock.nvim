@@ -652,18 +652,6 @@ function M.setup(user_cfg)
 			end, { desc = "Toggle Clock" })
 		end)
 	end
-	--
-	-- -- keymap (if desired)
-	-- if state.cfg.map ~= false then
-	-- 	local existing = vim.fn.maparg("<leader>ck", "n")
-	-- 	if existing == "" then
-	-- 		pcall(function()
-	-- 			vim.keymap.set("n", "<leader>ck", function()
-	-- 				M.toggle()
-	-- 			end, { desc = "Toggle clock.nvim", silent = true })
-	-- 		end)
-	-- 	end
-	-- end
 end
 
 return M
