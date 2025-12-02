@@ -1,11 +1,3 @@
--- lua/clock_floating.lua
--- ClockFloating (corrected): show a large ASCII/block clock in a centered floating window
--- Fixes:
---  - Clamp width/height to editor size and clamp row/col so floats never start off-screen
---  - Safe timer lifecycle (no :is_closing)
---  - Safe pcall wrappers, idempotent behavior
---  - Mapping controlled by cfg.map
-
 local M = {}
 
 local DEFAULTS = {
@@ -25,93 +17,20 @@ local DEFAULTS = {
 }
 
 local DIGITS = {
-	["0"] = {
-		" █████ ",
-		"█     █",
-		"█     █",
-		"█     █",
-		" █████ ",
-	},
-	["1"] = {
-		"   █   ",
-		"  ██   ",
-		"   █   ",
-		"   █   ",
-		"  ███  ",
-	},
-	["2"] = {
-		" █████ ",
-		"█     █",
-		"    ██ ",
-		"  ██   ",
-		"███████",
-	},
-	["3"] = {
-		" █████ ",
-		"█     █",
-		"   ███ ",
-		"█     █",
-		" █████ ",
-	},
-	["4"] = {
-		"█   ██ ",
-		"█   ██ ",
-		"███████",
-		"    ██ ",
-		"    ██ ",
-	},
-	["5"] = {
-		"███████",
-		"█      ",
-		"██████ ",
-		"      █",
-		"██████ ",
-	},
-	["6"] = {
-		" █████ ",
-		"█      ",
-		"██████ ",
-		"█     █",
-		" █████ ",
-	},
-	["7"] = {
-		"███████",
-		"█    ██",
-		"    ██ ",
-		"   ██  ",
-		"  ██   ",
-	},
-	["8"] = {
-		" █████ ",
-		"█     █",
-		" █████ ",
-		"█     █",
-		" █████ ",
-	},
-	["9"] = {
-		" █████ ",
-		"█     █",
-		" ██████",
-		"      █",
-		" █████ ",
-	},
-	[":"] = {
-		"       ",
-		"   ██  ",
-		"       ",
-		"   ██  ",
-		"       ",
-	},
-	[" "] = {
-		"       ",
-		"       ",
-		"       ",
-		"       ",
-		"       ",
-	},
+	["0"] = { " █████ ", "█     █", "█     █", "█     █", " █████ " },
+	["1"] = { "   █   ", "  ██   ", "   █   ", "   █   ", "  ███  " },
+	["2"] = { " █████ ", "█     █", "    ██ ", "  ██   ", "███████" },
+	["3"] = { " █████ ", "█     █", "   ███ ", "█     █", " █████ " },
+	["4"] = { "█   ██ ", "█   ██ ", "███████", "    ██ ", "    ██ " },
+	["5"] = { "███████", "█      ", "██████ ", "      █", "██████ " },
+	["6"] = { " █████ ", "█      ", "██████ ", "█     █", " █████ " },
+	["7"] = { "███████", "█    ██", "    ██ ", "   ██  ", "  ██   " },
+	["8"] = { " █████ ", "█     █", " █████ ", "█     █", " █████ " },
+	["9"] = { " █████ ", "█     █", " ██████", "      █", " █████ " },
+	[":"] = { "       ", "   ██  ", "       ", "   ██  ", "       " },
+	[" "] = { "       ", "       ", "       ", "       ", "       " },
 }
 
--- internal state
 local state = {
 	cfg = vim.tbl_deep_extend("force", {}, DEFAULTS),
 	timer = nil,
@@ -127,10 +46,6 @@ local function safe_call(fn)
 		return
 	end
 	local ok, err = pcall(fn)
-	if not ok then
-		-- Silent by default. Uncomment to debug:
-		-- vim.schedule(function() vim.notify("clock_floating error: " .. tostring(err), vim.log.levels.DEBUG) end)
-	end
 end
 
 local function create_highlights(cfg)
@@ -172,8 +87,7 @@ local function build_clock_lines(time_str, cfg)
 	end
 	local blocks = {}
 	for _, ch in ipairs(chars) do
-		local block = DIGITS[ch] or DIGITS[" "]
-		blocks[#blocks + 1] = scale_block(block, cfg.scale)
+		blocks[#blocks + 1] = scale_block(DIGITS[ch] or DIGITS[" "], cfg.scale)
 	end
 	local rows = #blocks[1]
 	local pad = string.rep(" ", cfg.padding)
@@ -211,17 +125,21 @@ local function make_buf()
 	return buf
 end
 
+-- open_floating: ensure we REMOVE keys unsupported by nvim_open_win (like 'winblend')
+-- set any window options (winblend, winhl) AFTER the window is created.
 local function open_floating(lines, opts)
 	local buf = make_buf()
 	if not buf then
 		return nil, nil
 	end
+
 	safe_call(function()
 		vim.api.nvim_buf_set_option(buf, "modifiable", true)
 		vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 		vim.api.nvim_buf_set_option(buf, "modifiable", false)
 	end)
-	-- ensure width/height are not bigger than editor size
+
+	-- clamp width/height/col/row to editor size
 	local ui_cols = vim.o.columns
 	local ui_rows = vim.o.lines - vim.o.cmdheight
 	if opts.width > ui_cols then
@@ -230,7 +148,6 @@ local function open_floating(lines, opts)
 	if opts.height > ui_rows then
 		opts.height = math.max(1, ui_rows - 2)
 	end
-	-- clamp col/row
 	if opts.col < 0 then
 		opts.col = 0
 	end
@@ -244,30 +161,59 @@ local function open_floating(lines, opts)
 		opts.row = math.max(0, ui_rows - opts.height)
 	end
 
+	-- prepare open_opts that we will pass to nvim_open_win (must NOT include winblend)
+	local open_opts = vim.tbl_deep_extend("force", {}, opts)
+	local winblend_value = nil
+	if open_opts.winblend ~= nil then
+		winblend_value = open_opts.winblend
+		open_opts.winblend = nil
+	end
+	-- ensure focusable/noautocmd keys are present if desired (these are accepted)
+	open_opts.focusable = open_opts.focusable == nil and false or open_opts.focusable
+	open_opts.noautocmd = open_opts.noautocmd == nil and true or open_opts.noautocmd
+
+	-- open the window with safe pcall
 	local win = nil
-	safe_call(function()
-		win = vim.api.nvim_open_win(buf, false, opts)
-		if win and vim.api.nvim_win_is_valid(win) then
-			vim.api.nvim_win_set_option(win, "winblend", opts.winblend or 0)
-			vim.api.nvim_win_set_option(win, "wrap", false)
-			vim.api.nvim_win_set_option(win, "cursorline", false)
-			vim.api.nvim_win_set_option(win, "signcolumn", "no")
-			vim.api.nvim_win_set_option(win, "foldcolumn", "0")
-		end
+	local ok, err = pcall(function()
+		win = vim.api.nvim_open_win(buf, false, open_opts)
 	end)
+	if not ok then
+		-- return error by returning nil,nil (caller may pcall)
+		return nil, nil
+	end
+
+	-- now set window options that must be applied after open
+	if win and vim.api.nvim_win_is_valid(win) then
+		if winblend_value ~= nil then
+			safe_call(function()
+				vim.api.nvim_win_set_option(win, "winblend", winblend_value)
+			end)
+		end
+		safe_call(function()
+			vim.api.nvim_win_set_option(win, "wrap", false)
+		end)
+		safe_call(function()
+			vim.api.nvim_win_set_option(win, "cursorline", false)
+		end)
+		safe_call(function()
+			vim.api.nvim_win_set_option(win, "signcolumn", "no")
+		end)
+		safe_call(function()
+			vim.api.nvim_win_set_option(win, "foldcolumn", "0")
+		end)
+	end
+
 	return buf, win
 end
 
 local function make_center_config(lines, cfg, offset_row, offset_col)
 	local rows, cols = compute_size(lines)
-	-- clamp width/height to editor size (-2 to leave a small margin)
 	local ui_cols = vim.o.columns
 	local ui_rows = vim.o.lines - vim.o.cmdheight
 	local width = math.min(cols, math.max(1, ui_cols - 2))
 	local height = math.min(rows, math.max(1, ui_rows - 2))
 	local col = math.floor((ui_cols - width) / 2) + (offset_col or 0)
 	local row = math.floor((ui_rows - height) / 2) + (offset_row or 0)
-	-- clamp to visible range
 	if col < 0 then
 		col = 0
 	end
@@ -281,7 +227,7 @@ local function make_center_config(lines, cfg, offset_row, offset_col)
 		row = math.max(0, ui_rows - height)
 	end
 
-	return {
+	local cfg_tbl = {
 		relative = "editor",
 		row = row,
 		col = col,
@@ -289,8 +235,19 @@ local function make_center_config(lines, cfg, offset_row, offset_col)
 		height = height,
 		style = "minimal",
 		border = cfg.border,
+		-- don't include winblend here if we intend to pass opts directly to nvim_open_win; leave it
+		-- in the table so open_floating can extract it and then remove before calling open.
 		winblend = cfg.winblend,
 	}
+
+	-- add anchor/zindex on newer nvim only
+	local v = vim.version()
+	if v and v.major == 0 and v.minor >= 9 then
+		cfg_tbl.anchor = "NW"
+		cfg_tbl.zindex = 200
+	end
+
+	return cfg_tbl
 end
 
 local function render_once()
@@ -299,7 +256,6 @@ local function render_once()
 	end
 	local cfg = state.cfg
 
-	-- hide if terminal too small according to config
 	if vim.o.columns < cfg.min_cols or (vim.o.lines - vim.o.cmdheight) < cfg.min_rows then
 		safe_call(function()
 			if state.wins.main and vim.api.nvim_win_is_valid(state.wins.main) then
@@ -318,6 +274,7 @@ local function render_once()
 	local lines = build_clock_lines(timestr, cfg)
 
 	local main_cfg = make_center_config(lines, cfg, 0, 0)
+	-- keep winblend value inside cfg table; open_floating will remove before open and apply after
 	main_cfg.winblend = cfg.winblend
 
 	local shadow_cfg = nil
@@ -330,7 +287,6 @@ local function render_once()
 
 	create_highlights(cfg)
 
-	-- Shadow
 	if cfg.use_shadow then
 		if not (state.wins.shadow and vim.api.nvim_win_is_valid(state.wins.shadow)) then
 			local buf_s, win_s = open_floating(lines, shadow_cfg)
@@ -339,8 +295,7 @@ local function render_once()
 					vim.api.nvim_win_set_option(win_s, "winhl", "Normal:ClockFloatingShadow")
 				end)
 			end
-			state.bufs.shadow = buf_s
-			state.wins.shadow = win_s
+			state.bufs.shadow, state.wins.shadow = buf_s, win_s
 		else
 			if state.bufs.shadow and vim.api.nvim_buf_is_valid(state.bufs.shadow) then
 				safe_call(function()
@@ -357,7 +312,9 @@ local function render_once()
 					pcall(vim.api.nvim_win_close, state.wins.shadow, true)
 					local buf_s, win_s = open_floating(lines, shadow_cfg)
 					if win_s and vim.api.nvim_win_is_valid(win_s) then
-						vim.api.nvim_win_set_option(win_s, "winhl", "Normal:ClockFloatingShadow")
+						safe_call(function()
+							vim.api.nvim_win_set_option(win_s, "winhl", "Normal:ClockFloatingShadow")
+						end)
 					end
 					state.bufs.shadow, state.wins.shadow = buf_s, win_s
 				end
@@ -365,7 +322,6 @@ local function render_once()
 		end
 	end
 
-	-- Main
 	if not (state.wins.main and vim.api.nvim_win_is_valid(state.wins.main)) then
 		local buf_m, win_m = open_floating(lines, main_cfg)
 		if win_m and vim.api.nvim_win_is_valid(win_m) then
@@ -390,7 +346,9 @@ local function render_once()
 				pcall(vim.api.nvim_win_close, state.wins.main, true)
 				local buf_m, win_m = open_floating(lines, main_cfg)
 				if win_m and vim.api.nvim_win_is_valid(win_m) then
-					vim.api.nvim_win_set_option(win_m, "winhl", "Normal:ClockFloatingMain")
+					safe_call(function()
+						vim.api.nvim_win_set_option(win_m, "winhl", "Normal:ClockFloatingMain")
+					end)
 				end
 				state.bufs.main, state.wins.main = buf_m, win_m
 			end
@@ -402,7 +360,6 @@ local function start_timer()
 	if state.timer_running then
 		return
 	end
-
 	local timer = vim.loop.new_timer()
 	if not timer then
 		state.timer_running = true
@@ -418,7 +375,6 @@ local function start_timer()
 		state.timer = nil
 		return
 	end
-
 	vim.schedule(render_once)
 	local wrapped = vim.schedule_wrap(function()
 		if state.active then
