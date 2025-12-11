@@ -1,6 +1,6 @@
-# basic clock
+# The most basic clock around
 
-A simple floating clock for Neovim.
+A simple floating clock for Neovim in a single file. No fluff. Just tooggle it on/off and that's it.
 ![clock](./clock.png)
 
 ## Installing with lazy.nvim
