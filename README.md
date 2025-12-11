@@ -1,7 +1,11 @@
 # basic clock
 
+A simple floating clock for Neovim.
+![clock](./clock.png)
+
 ## Installing with lazy.nvim
-Add the following to your ~/.conf/nvim
+
+Add the following to your ~/.conf/nvim. Toggle the clock on/off with `<leader>ck`.
 
 ```
 return {
